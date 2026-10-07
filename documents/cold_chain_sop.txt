@@ -1,0 +1,36 @@
+COLD CHAIN LOGISTICS SOP
+
+SECTION: TEMPERATURE CONTROL
+
+Refrigerated healthcare cargo must normally be maintained
+between 2 and 8 degrees Celsius.
+
+Temperature must be monitored continuously using IoT sensors.
+
+If cargo temperature exceeds 8 degrees Celsius,
+the shipment must be flagged for investigation.
+
+If cargo temperature falls below 2 degrees Celsius,
+the shipment must also be flagged for investigation.
+
+SECTION: HIGH RISK ROUTES
+
+Routes classified as HIGH risk require additional monitoring.
+
+High risk shipments should be reviewed by the control tower
+operator before dispatch.
+
+SECTION: DRIVER FATIGUE
+
+Drivers with a fatigue score above the company threshold
+must not continue a high risk delivery without review.
+
+SECTION: WEATHER
+
+Severe weather conditions require the control tower operator
+to evaluate the route before continuing transportation.
+
+SECTION: CARGO CONDITION
+
+Cargo marked as POOR condition requires investigation
+before final delivery confirmation.

@@ -1,0 +1,51 @@
+Pending Lessons
+1. Lesson 3 — SQL Agent Tool
+   - Natural Language → SQL → PostgreSQL → Answer
+2. Lesson 4 — SQL Safety & Validation
+   - Read-only queries, validation, SQL injection protection
+3. Lesson 5 — Weather API Tool
+   - External real-time weather data
+4. Lesson 6 — RAG Architecture
+   - Company SOP / compliance documents
+5. Lesson 7 — Document Ingestion & Chunking
+   - PDF/Markdown/TXT → chunks → embeddings
+6. Lesson 8 — Vector Database
+   - Pinecone/local vector store → semantic search
+7. Lesson 9 — LangGraph Agent State
+   - State, nodes, edges, tool routing
+8. Lesson 10 — Agent Orchestrator
+   - SQL + Weather + RAG tool selection
+9. Lesson 11 — Agent Memory
+   - Conversation/session memory
+10. Lesson 12 — ReAct Agent Workflow
+    - Reason → Act → Observe → Respond
+11. Lesson 13 — Error Handling & Fallbacks
+    - Production-grade agent failures
+12. Lesson 14 — Audit Logging
+    - User questions, tool calls, SQL, results
+13. Lesson 15 — Security & Permissions
+    - DB users, secrets, access control
+14. Lesson 16 — Streamlit UI
+    - Production-style AI control tower
+15. Lesson 17 — End-to-End Integration
+    - UI → Agent → Tools → Data
+16. Lesson 18 — Testing
+    - Unit, integration, agent/tool testing
+17. Lesson 19 — Dockerize the AI Application
+    - Multi-container production setup
+18. Lesson 20 — CI/CD with GitHub Actions
+    - Automated build/test/deployment
+19. Lesson 21 — Free Cloud Deployment
+    - Deploy application + PostgreSQL
+20. Lesson 22 — Production Hardening
+    - Environment variables, logging, health checks, monitoring
+21. Lesson 23 — FDE Client Presentation
+    - Architecture + business value + demo
+22. Lesson 24 — Final End-to-End Project
+    - Complete Cold Chain Logistics AI Agent
+
+----------------------------------------------------
+
+.venv\Scripts\activate
+
+-----------------------------------------------------
