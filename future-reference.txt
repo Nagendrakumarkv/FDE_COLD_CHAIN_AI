@@ -47,5 +47,7 @@ Pending Lessons
 ----------------------------------------------------
 
 .venv\Scripts\activate
+python -m rag.ingest
+rmdir /s /q vector_db
 
 -----------------------------------------------------
