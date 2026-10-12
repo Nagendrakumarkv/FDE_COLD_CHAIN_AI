@@ -1,101 +1,109 @@
+
+import hashlib
 from pathlib import Path
 
-import chromadb
 from sentence_transformers import SentenceTransformer
 
 from rag.document_loader import load_document
 from rag.chunker import create_chunks
-
+from rag.vector_store import get_collection
 
 DOCUMENTS_DIR = Path("documents")
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
-CHROMA_PATH = "vector_db"
 
-COLLECTION_NAME = "cold_chain_sop"
+def get_metadata(file: Path, index: int) -> dict:
+    name = file.stem.lower()
+
+    if "temperature" in name or "cold_chain" in name:
+        category = "temperature"
+    elif "emergency" in name:
+        category = "emergency"
+    elif "driver" in name:
+        category = "driver_safety"
+    else:
+        category = "general"
+
+    return {
+        "source": file.name,
+        "file_type": file.suffix.lower().lstrip("."),
+        "category": category,
+        "department": "operations",
+        "chunk_index": index,
+    }
+
+
+def make_chunk_id(
+    filename: str,
+    index: int,
+    content: str,
+) -> str:
+    digest = hashlib.sha256(
+        content.encode("utf-8")
+    ).hexdigest()[:16]
+
+    return f"{filename}-{index}-{digest}"
 
 
 def main():
-
-    print("Loading embedding model...")
-
-    model = SentenceTransformer(
-        "all-MiniLM-L6-v2"
-    )
-
-    client = chromadb.PersistentClient(
-        path=CHROMA_PATH
-    )
-
-    collection = client.get_or_create_collection(
-        name=COLLECTION_NAME
-    )
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    collection = get_collection()
 
     files = [
-        file
-        for file in DOCUMENTS_DIR.iterdir()
-        if file.is_file()
+        path for path in DOCUMENTS_DIR.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in {
+            ".txt", ".md", ".pdf", ".csv"
+        }
     ]
 
-    total_chunks = 0
+    if not files:
+        print("No supported documents found.")
+        return
+
+    total = 0
 
     for file in files:
+        print(f"Processing: {file}")
 
-        print(
-            f"\nProcessing: {file.name}"
+        content = load_document(str(file))
+        chunks = create_chunks(content)
+
+        if not chunks:
+            print("No text extracted; skipping.")
+            continue
+
+        # Remove old chunks for this source.
+        collection.delete(
+            where={"source": file.name}
         )
 
-        try:
-            text = load_document(
-                str(file)
-            )
+        embeddings = model.encode(
+            chunks,
+            normalize_embeddings=True,
+        ).tolist()
 
-            chunks = create_chunks(text)
+        ids = [
+            make_chunk_id(file.name, i, chunk)
+            for i, chunk in enumerate(chunks)
+        ]
 
-            print(
-                f"Created {len(chunks)} chunks"
-            )
+        metadatas = [
+            get_metadata(file, i)
+            for i in range(len(chunks))
+        ]
 
-            embeddings = model.encode(
-                chunks
-            ).tolist()
+        collection.upsert(
+            ids=ids,
+            documents=chunks,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
 
-            ids = [
-                f"{file.stem}-{index}"
-                for index in range(len(chunks))
-            ]
+        total += len(chunks)
+        print(f"Stored {len(chunks)} chunks.")
 
-            metadatas = [
-                {
-                    "source": file.name,
-                    "chunk_index": index,
-                }
-                for index in range(len(chunks))
-            ]
-
-            collection.upsert(
-                ids=ids,
-                documents=chunks,
-                embeddings=embeddings,
-                metadatas=metadatas,
-            )
-
-            total_chunks += len(chunks)
-
-        except Exception as error:
-
-            print(
-                f"Failed: {file.name}"
-            )
-
-            print(error)
-
-    print(
-        f"\nIngestion completed."
-    )
-
-    print(
-        f"Total chunks: {total_chunks}"
-    )
+    print(f"Ingestion complete: {total} chunks.")
 
 
 if __name__ == "__main__":

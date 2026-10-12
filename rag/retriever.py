@@ -1,89 +1,69 @@
-import chromadb
 
 from sentence_transformers import SentenceTransformer
 
+from rag.vector_store import get_collection
 
-CHROMA_PATH = "vector_db"
-COLLECTION_NAME = "cold_chain_sop"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
-
-print("Loading embedding model...")
-
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
-
-print("Connecting to Chroma...")
-
-client = chromadb.PersistentClient(
-    path=CHROMA_PATH
-)
-
-collection = client.get_collection(
-    name=COLLECTION_NAME
-)
-
-print("Chroma connected.")
-print("Collection count:", collection.count())
+model = SentenceTransformer(EMBEDDING_MODEL)
 
 
 def search_sop(
     question: str,
+    category: str | None = None,
+    department: str | None = None,
     top_k: int = 3,
 ) -> list[dict]:
+    if not question.strip():
+        raise ValueError("Question cannot be empty.")
 
-    print("Creating query embedding...")
+    if not 1 <= top_k <= 10:
+        raise ValueError("top_k must be between 1 and 10.")
+
+    filters = []
+
+    if category:
+        filters.append({"category": category})
+
+    if department:
+        filters.append({"department": department})
+
+    where = None
+
+    if len(filters) == 1:
+        where = filters[0]
+    elif len(filters) > 1:
+        where = {"$and": filters}
+
+    collection = get_collection()
+
+    if collection.count() == 0:
+        return []
 
     query_embedding = model.encode(
-        [question]
-    ).tolist()[0]
-
-    print("Embedding created.")
-    print("Querying Chroma...")
+        [question],
+        normalize_embeddings=True,
+    ).tolist()
 
     results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-        include=[
-            "documents",
-            "metadatas",
-        ],
+        query_embeddings=query_embedding,
+        n_results=min(top_k, collection.count()),
+        where=where,
+        include=["documents", "metadatas", "distances"],
     )
 
-    print("Chroma query completed.")
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
 
-    documents = results.get(
-        "documents",
-        [[]],
-    )[0]
-
-    metadatas = results.get(
-        "metadatas",
-        [[]],
-    )[0]
-
-    output = []
-
-    for document, metadata in zip(
-        documents,
-        metadatas,
-    ):
-        metadata = metadata or {}
-
-        output.append(
-            {
-                "source": metadata.get(
-                    "source",
-                    "unknown",
-                ),
-                "chunk_index": metadata.get(
-                    "chunk_index",
-                    -1,
-                ),
-                "content": document,
-            }
-        )
-
-    print("output:", output)
-
-    return output
+    return [
+        {
+            "content": document,
+            "source": metadata.get("source"),
+            "category": metadata.get("category"),
+            "department": metadata.get("department"),
+            "distance": distance,
+        }
+        for document, metadata, distance
+        in zip(documents, metadatas, distances)
+    ]
