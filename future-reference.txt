@@ -50,4 +50,8 @@ Pending Lessons
 python -m rag.ingest
 rmdir /s /q vector_db
 
+docker compose up -d
+docker compose up -d postgres chroma
+docker compose ps
+
 -----------------------------------------------------
