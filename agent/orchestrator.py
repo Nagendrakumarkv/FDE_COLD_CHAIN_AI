@@ -7,7 +7,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.graph import START, END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from tools.sql_tool import execute_sql
@@ -20,31 +20,16 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
 You are a Cold Chain Logistics AI Assistant.
+Use SQL for logistics data, weather for current conditions,
+and SOP search for company procedures.
 
-Choose tools based on the question:
-- Shipment counts, temperatures, delays, inventory: PostgreSQL SQL tool.
-- Current weather: Weather tool.
-- Company policy and handling procedures: SOP search tool.
-- Questions requiring multiple data sources: call multiple relevant tools.
-
-Safety:
-- Never invent SQL results, weather observations, or SOP content.
-- Generate read-only SQL only; database permissions must enforce this.
-- Use actual tool outputs as evidence.
-- Cite SOP source filenames when available.
-- If a tool fails or returns no evidence, disclose that limitation.
-- Never declare cargo safe based on incomplete evidence.
-- Distinguish measured facts from potential risks.
-- Do not claim that an SOP was followed merely because it was retrieved.
-- Answer concisely.
+Use conversation history to resolve references such as "it",
+"that shipment", and "what about the previous one".
+Never invent results. Disclose tool failures.
+Cite SOP source filenames when available.
+Never declare cargo safe using incomplete evidence.
+Keep answers concise and factual.
 """
-
-
-def tool_error(tool_name: str, error: Exception) -> dict:
-    logger.exception("%s failed", tool_name)
-    return {
-        "error": f"{tool_name} failed: {type(error).__name__}: {error}"
-    }
 
 
 @tool
@@ -52,17 +37,19 @@ def query_logistics(sql_query: str) -> dict:
     """Query logistics records using read-only SQL."""
     try:
         return {"data": execute_sql(sql_query)}
-    except Exception as error:
-        return tool_error("SQL query", error)
+    except Exception as exc:
+        logger.exception("SQL tool failed")
+        return {"error": f"SQL query failed: {exc}"}
 
 
 @tool
 def check_weather(location: str) -> dict:
-    """Get current weather for a named location."""
+    """Get current weather for a location."""
     try:
         return {"data": get_weather(location)}
-    except Exception as error:
-        return tool_error("Weather lookup", error)
+    except Exception as exc:
+        logger.exception("Weather tool failed")
+        return {"error": f"Weather lookup failed: {exc}"}
 
 
 @tool
@@ -70,8 +57,9 @@ def search_compliance_sop(question: str) -> dict:
     """Search company SOP and compliance documents."""
     try:
         return {"data": search_sop(question, top_k=3)}
-    except Exception as error:
-        return tool_error("SOP search", error)
+    except Exception as exc:
+        logger.exception("SOP tool failed")
+        return {"error": f"SOP search failed: {exc}"}
 
 
 TOOLS = [
@@ -84,7 +72,7 @@ TOOLS = [
 def create_model():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise RuntimeError("Set GOOGLE_API_KEY in your .env file.")
+        raise RuntimeError("GOOGLE_API_KEY is missing from .env")
 
     model = ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
@@ -107,19 +95,21 @@ def reason(state: MessagesState):
 
 
 def build_graph():
-    builder = StateGraph(MessagesState)
-    builder.add_node("reasoner", reason)
-    builder.add_node("tools", ToolNode(TOOLS))
+    graph = StateGraph(MessagesState)
 
-    builder.add_edge(START, "reasoner")
-    builder.add_conditional_edges(
+    graph.add_node("reasoner", reason)
+    graph.add_node("tools", ToolNode(TOOLS))
+
+    graph.add_edge(START, "reasoner")
+    graph.add_conditional_edges(
         "reasoner",
         tools_condition,
         {"tools": "tools", END: END},
     )
-    builder.add_edge("tools", "reasoner")
+    graph.add_edge("tools", "reasoner")
 
-    return builder.compile(checkpointer=MemorySaver())
+    # Stores conversation checkpoints in process memory.
+    return graph.compile(checkpointer=MemorySaver())
 
 
 agent = build_graph()
@@ -129,7 +119,7 @@ def ask_agent(
     question: str,
     thread_id: str = "local-session",
 ) -> str:
-    if not question or not question.strip():
+    if not question.strip():
         raise ValueError("Question cannot be empty.")
 
     result = agent.invoke(
@@ -141,6 +131,7 @@ def ask_agent(
     )
 
     answer = result["messages"][-1].content
+
     if isinstance(answer, str):
         return answer
 
