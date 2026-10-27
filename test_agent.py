@@ -1,33 +1,23 @@
-
 from agent.orchestrator import ask_agent
 
 
 def main():
-    session_a = "user-session-001"
-    session_b = "user-session-002"
+    thread_id = "react-agent-test"
 
-    conversation_a = [
-        "My shipment ID is 102.",
-        "What is its recorded temperature?",
-        "What does the SOP recommend if that temperature exceeds the limit?",
+    questions = [
+        "How many records are in the logistics table and What is the current weather in Los Angeles",
     ]
 
-    for question in conversation_a:
-        print(f"\nUSER: {question}")
+    for question in questions:
+        print("\n" + "=" * 65)
+        print(f"USER: {question}")
+
         try:
-            print("AGENT:", ask_agent(question, session_a))
+            answer = ask_agent(question, thread_id)
+            print(f"AGENT: {answer}")
+
         except Exception as exc:
             print(f"ERROR: {type(exc).__name__}: {exc}")
-
-    # A different session must not inherit session A's messages.
-    print("\n--- Separate session test ---")
-    try:
-        print(
-            "AGENT:",
-            ask_agent("What shipment were we discussing?", session_b),
-        )
-    except Exception as exc:
-        print(f"ERROR: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
