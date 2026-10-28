@@ -1,38 +1,54 @@
+import json
+from pathlib import Path
+
 from agent.orchestrator import ask_agent
 
-
-def test_empty_question():
-    try:
-        ask_agent("")
-    except ValueError as error:
-        print("PASS: Empty question rejected:", error)
-    else:
-        print("FAIL: Empty question was accepted")
+AUDIT_LOG = Path("logs/agent_audit.jsonl")
 
 
 def main():
-    test_empty_question()
+    thread_id = "lesson-14-audit-test"
 
     questions = [
         "How many records are in the logistics table and What is the current weather in Los Angeles",
     ]
 
-    for index, question in enumerate(questions, start=1):
+    for question in questions:
         print("\n" + "=" * 60)
-        print(f"TEST {index}: {question}")
+        print(f"USER: {question}")
 
         try:
-            answer = ask_agent(
-                question=question,
-                thread_id=f"error-test-{index}",
-            )
-            print("RESULT:", answer)
+            answer = ask_agent(question, thread_id)
+            print("AGENT:", answer)
 
         except Exception as error:
             print(
-                f"UNHANDLED ERROR: "
-                f"{type(error).__name__}: {error}"
+                f"ERROR: {type(error).__name__}: {error}"
             )
+
+    print("\n--- AUDIT LOG CHECK ---")
+
+    if not AUDIT_LOG.exists():
+        print("Audit log not found:", AUDIT_LOG)
+        return
+
+    lines = AUDIT_LOG.read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    print("Total audit events:", len(lines))
+
+    for line in lines[-10:]:
+        try:
+            event = json.loads(line)
+            print(
+                event["timestamp"],
+                event["session_id"],
+                event["event_type"],
+                event["status"],
+            )
+        except (json.JSONDecodeError, KeyError):
+            print("Invalid audit record:", line[:200])
 
 
 if __name__ == "__main__":

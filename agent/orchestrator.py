@@ -10,6 +10,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from agent.audit_logger import (
+    audit_event,
+    reset_audit_session,
+    sanitize,
+    set_audit_session,
+    summarize_result,
+)
 from tools.sql_tool import execute_sql
 from tools.weather_tool import get_weather
 from rag.retriever import search_sop
@@ -24,19 +31,26 @@ You are a Cold Chain Logistics AI Assistant.
 
 Tools:
 - PostgreSQL: logistics records and shipment temperatures.
-- Weather API: current weather conditions.
+- Weather API: current weather.
 - ChromaDB RAG: company SOPs and compliance documents.
 
-Failure-handling rules:
+Rules:
 - Use actual tool results only.
-- If a tool reports an error, do not invent its result.
-- If another available tool can help, use it.
-- Clearly disclose missing evidence and failed tools.
-- Never claim cargo is safe from incomplete evidence.
+- Never invent SQL, weather, or SOP results.
+- If a tool fails, disclose the limitation.
+- Use another tool if useful and available.
 - Cite SOP source filenames when available.
-- Never bypass SQL validation.
+- Never declare cargo safe using incomplete evidence.
 - Keep answers concise and factual.
 """
+
+
+def record_audit(event_type, status="info", **details):
+    """Prevent audit-file errors from crashing agent execution."""
+    try:
+        audit_event(event_type, status=status, **details)
+    except Exception:
+        logger.exception("Failed to write audit event: %s", event_type)
 
 
 def is_transient_error(error: Exception) -> bool:
@@ -49,7 +63,6 @@ def is_transient_error(error: Exception) -> bool:
     name = type(error).__name__.lower()
     message = str(error).lower()
 
-    # Do not retry exhausted quotas or authentication failures.
     permanent_indicators = (
         "insufficient_quota",
         "credit_balance_exhausted",
@@ -70,7 +83,6 @@ def is_transient_error(error: Exception) -> bool:
     transient_messages = (
         "timed out",
         "connection reset",
-        "connection refused",
         "service unavailable",
         "internal server error",
         "bad gateway",
@@ -82,49 +94,87 @@ def is_transient_error(error: Exception) -> bool:
     )
 
 
-@tool
-def query_logistics(sql_query: str) -> dict:
-    """Query logistics records using validated, read-only SQL."""
+def run_tool(tool_name, operation, **inputs):
+    """Audit a tool's execution and return its result."""
+    start = time.perf_counter()
+
+    record_audit(
+        "tool_call_started",
+        status="started",
+        tool_name=tool_name,
+        **inputs,
+    )
+
     try:
-        return {"data": execute_sql(sql_query)}
-    except Exception:
-        logger.exception("Logistics SQL tool failed")
+        result = operation()
+        duration_ms = round(
+            (time.perf_counter() - start) * 1000, 2
+        )
+
+        failed = isinstance(result, dict) and "error" in result
+
+        record_audit(
+            "tool_call_finished",
+            status="error" if failed else "success",
+            tool_name=tool_name,
+            duration_ms=duration_ms,
+            result=summarize_result(result),
+        )
+
+        return result
+
+    except Exception as error:
+        duration_ms = round(
+            (time.perf_counter() - start) * 1000, 2
+        )
+
+        record_audit(
+            "tool_call_finished",
+            status="error",
+            tool_name=tool_name,
+            duration_ms=duration_ms,
+            error_type=type(error).__name__,
+            error=sanitize(error),
+        )
+
+        logger.exception("%s failed", tool_name)
+
         return {
             "error": (
-                "The logistics database query failed. "
-                "No database result is available."
+                f"{tool_name} failed. "
+                "No verified result is available."
             )
         }
+
+
+@tool
+def query_logistics(sql_query: str) -> dict:
+    """Query logistics records using validated read-only SQL."""
+    return run_tool(
+        "postgresql",
+        lambda: {"data": execute_sql(sql_query)},
+        sql_query=sanitize(sql_query),
+    )
 
 
 @tool
 def check_weather(location: str) -> dict:
     """Retrieve current weather for a named location."""
-    try:
-        return {"data": get_weather(location)}
-    except Exception:
-        logger.exception("Weather tool failed")
-        return {
-            "error": (
-                "The weather service is currently unavailable "
-                "or the request failed."
-            )
-        }
+    return run_tool(
+        "weather",
+        lambda: {"data": get_weather(location)},
+        location=location,
+    )
 
 
 @tool
 def search_compliance_sop(question: str) -> dict:
     """Search company SOP and compliance documents."""
-    try:
-        return {"data": search_sop(question, top_k=3)}
-    except Exception:
-        logger.exception("SOP retrieval failed")
-        return {
-            "error": (
-                "The SOP search failed. No verified policy "
-                "evidence is available from this search."
-            )
-        }
+    return run_tool(
+        "sop_search",
+        lambda: {"data": search_sop(question, top_k=3)},
+        search_question=question,
+    )
 
 
 TOOLS = [
@@ -139,7 +189,7 @@ def create_model():
 
     if not api_key:
         raise RuntimeError(
-            "GOOGLE_API_KEY is missing from the .env file."
+            "GOOGLE_API_KEY is missing from .env."
         )
 
     return ChatGoogleGenerativeAI(
@@ -154,57 +204,75 @@ model_with_tools = create_model()
 
 
 def invoke_model_with_retry(messages):
-    """Retry only errors classified as transient."""
-    max_attempts = 3
-
-    for attempt in range(1, max_attempts + 1):
+    """Retry transient Gemini failures at most three times."""
+    for attempt in range(1, 4):
         try:
             return model_with_tools.invoke(messages)
 
         except Exception as error:
-            if (
-                attempt == max_attempts
-                or not is_transient_error(error)
-            ):
+            if attempt == 3 or not is_transient_error(error):
                 raise
 
             delay = 2 ** (attempt - 1)
 
-            logger.warning(
-                "Transient Gemini error; retrying in %s seconds "
-                "(attempt %s/%s).",
-                delay,
-                attempt,
-                max_attempts,
+            record_audit(
+                "gemini_retry",
+                status="retrying",
+                attempt=attempt,
+                delay_seconds=delay,
+                error_type=type(error).__name__,
             )
 
             time.sleep(delay)
 
 
 def reason(state: MessagesState):
-    """Ask Gemini to reason over the conversation and tool results."""
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        *state["messages"],
-    ]
+    """Run Gemini reasoning and audit its outcome."""
+    start = time.perf_counter()
 
     try:
-        response = invoke_model_with_retry(messages)
+        response = invoke_model_with_retry(
+            [
+                SystemMessage(content=SYSTEM_PROMPT),
+                *state["messages"],
+            ]
+        )
+
+        record_audit(
+            "gemini_reasoning",
+            status="success",
+            duration_ms=round(
+                (time.perf_counter() - start) * 1000, 2
+            ),
+            requested_tool_count=len(
+                getattr(response, "tool_calls", [])
+            ),
+        )
+
         return {"messages": [response]}
 
     except Exception as error:
+        record_audit(
+            "gemini_reasoning",
+            status="error",
+            duration_ms=round(
+                (time.perf_counter() - start) * 1000, 2
+            ),
+            error_type=type(error).__name__,
+            error=sanitize(error),
+        )
+
         logger.exception("Gemini reasoning failed")
 
-        # Return a clear response rather than crashing the graph.
         if "429" in str(error) or "quota" in str(error).lower():
             message = (
-                "The Gemini API quota is unavailable or exhausted. "
-                "Please check your API quota and try again later."
+                "Gemini API quota is unavailable or exhausted. "
+                "Check your API quota and try again later."
             )
         else:
             message = (
-                "I couldn't complete the request because the AI "
-                "service failed. Please try again later."
+                "The AI service failed to complete this request. "
+                "Please try again later."
             )
 
         return {"messages": [AIMessage(content=message)]}
@@ -221,10 +289,7 @@ def build_graph():
     graph.add_conditional_edges(
         "reasoner",
         tools_condition,
-        {
-            "tools": "tools",
-            END: END,
-        },
+        {"tools": "tools", END: END},
     )
 
     graph.add_edge("tools", "reasoner")
@@ -242,31 +307,67 @@ def ask_agent(
     if not question or not question.strip():
         raise ValueError("Question cannot be empty.")
 
-    result = agent.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": question.strip(),
-                }
-            ]
-        },
-        config={
-            "configurable": {"thread_id": thread_id},
-            "recursion_limit": 12,
-        },
+    session_token = set_audit_session(thread_id)
+
+    record_audit(
+        "user_question",
+        status="received",
+        question=question.strip(),
     )
 
-    answer = result["messages"][-1].content
+    start = time.perf_counter()
 
-    if isinstance(answer, str):
-        return answer
-
-    if isinstance(answer, list):
-        return "\n".join(
-            block["text"]
-            for block in answer
-            if isinstance(block, dict) and block.get("text")
+    try:
+        result = agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": question.strip(),
+                    }
+                ]
+            },
+            config={
+                "configurable": {"thread_id": thread_id},
+                "recursion_limit": 12,
+            },
         )
 
-    return str(answer)
+        answer = result["messages"][-1].content
+
+        if isinstance(answer, str):
+            final_answer = answer
+        elif isinstance(answer, list):
+            final_answer = "\n".join(
+                block["text"]
+                for block in answer
+                if isinstance(block, dict) and block.get("text")
+            )
+        else:
+            final_answer = str(answer)
+
+        record_audit(
+            "agent_response",
+            status="success",
+            duration_ms=round(
+                (time.perf_counter() - start) * 1000, 2
+            ),
+            response=sanitize(final_answer)[:800],
+        )
+
+        return final_answer
+
+    except Exception as error:
+        record_audit(
+            "agent_response",
+            status="error",
+            duration_ms=round(
+                (time.perf_counter() - start) * 1000, 2
+            ),
+            error_type=type(error).__name__,
+            error=sanitize(error),
+        )
+        raise
+
+    finally:
+        reset_audit_session(session_token)
