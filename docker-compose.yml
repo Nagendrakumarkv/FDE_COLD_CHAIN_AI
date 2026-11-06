@@ -1,25 +1,42 @@
-
 services:
   postgres:
     image: postgres:17
     container_name: cold-chain-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: cold_chain
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: ${DB_PASSWORD:-admin123}
+      POSTGRES_DB: cold_chain
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d cold_chain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  chroma:
-    image: chromadb/chroma
-    container_name: cold-chain-chroma
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cold-chain-ai-app
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      # Use the PostgreSQL service name inside Docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      - chroma_data:/data
+      - ./vector_db:/app/vector_db
+      - ./logs:/app/logs
 
 volumes:
   postgres_data:
-  chroma_data:
