@@ -2,9 +2,6 @@ import uuid
 
 import pytest
 
-from agent.orchestrator import ask_agent
-
-
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "question",
@@ -15,6 +12,8 @@ from agent.orchestrator import ask_agent
     ],
 )
 def test_agent_returns_response(question):
+    from agent.orchestrator import ask_agent
+    
     thread_id = f"test-{uuid.uuid4().hex}"
 
     response = ask_agent(
