@@ -72,3 +72,6 @@ Set up this app on Neon.
 
 ---------------------------------------------------
 
+Pending
+
+4. Configure ChromaDB cloud storage
