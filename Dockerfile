@@ -13,8 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY . .
 
-EXPOSE 8501
+# Render provides PORT; 10000 is the local fallback
+EXPOSE 10000
 
-CMD ["python", "-m", "streamlit", "run", "app.py", \
-     "--server.address=0.0.0.0", \
-     "--server.port=8501"]
+CMD ["sh", "-c", "streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-10000}"]
