@@ -60,8 +60,63 @@ Out of scope for now:
 
 Python 3.12, Streamlit, LangGraph, LangChain, Google Gemini (`gemini-2.5-flash` by default), SQLAlchemy and psycopg2, PostgreSQL 17 / Neon, ChromaDB, Qdrant, sentence-transformers (`all-MiniLM-L6-v2`), pandas, pypdf, pytest, Docker.
 
+## Live deployment
+
+The app is deployed on Streamlit Community Cloud:
+
+**https://fdecoldchainai-qnmgdjmnsgln9wnxn78y5k.streamlit.app/**
+
+It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER=qdrant`), because Streamlit Cloud has no local PostgreSQL and its disk is not persistent.
+
+### Deploy to Streamlit Community Cloud, step by step
+
+1. **Prepare the cloud services first.**
+   - Neon: create a project and copy the connection string (`DATABASE_URL`). Load the data with `python scripts/ingest_data.py` while `DB_TARGET=neon` is set locally.
+   - Qdrant Cloud: create a cluster, copy the cluster URL and API key. Load the SOP vectors with `python rag/ingest.py` (or `python rag/migrate_chroma_to_qdrant.py` to copy an existing Chroma store) while `VECTOR_DB_PROVIDER=qdrant` is set.
+   - Google AI Studio: create a Gemini API key.
+2. **Check the repository.**
+   - `app.py` is at the repository root (it is the entry point).
+   - `requirements.txt` lists every dependency (it already includes `streamlit`, `qdrant-client`, `langchain-google-genai`).
+   - `.env` is listed in `.gitignore`. Never commit it.
+3. **Push the code to GitHub.** Streamlit Cloud deploys from a GitHub repository (public, or private with access granted).
+   ```powershell
+   git add .
+   git commit -m "Prepare Streamlit deployment"
+   git push origin main
+   ```
+4. **Sign in** at https://share.streamlit.io with your GitHub account and authorize access to the repository.
+5. **Create the app.** Click **Create app** (or **New app**), choose **Deploy a public app from GitHub**, then set:
+   - Repository: your `cold-chain-ai` repository
+   - Branch: `main`
+   - Main file path: `app.py`
+   - App URL: pick a custom subdomain if you want one
+6. **Select the Python version.** Open **Advanced settings** and choose Python 3.12 (matches local development).
+7. **Add secrets.** In **Advanced settings > Secrets**, paste TOML with your real values:
+   ```toml
+   GOOGLE_API_KEY = "your-gemini-key"
+   GEMINI_MODEL = "gemini-2.5-flash"
+   DB_TARGET = "neon"
+   DATABASE_URL = "postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
+   VECTOR_DB_PROVIDER = "qdrant"
+   QDRANT_URL = "https://your-cluster.cloud.qdrant.io"
+   QDRANT_API_KEY = "your-qdrant-key"
+   QDRANT_COLLECTION = "cold_chain_sop"
+   ```
+   Top-level secrets are exposed to the app as environment variables, so the existing `os.getenv(...)` calls work without code changes. Docker Hub tokens and local `DB_*` variables are not needed.
+8. **Deploy.** Click **Deploy**. The first build installs `requirements.txt` and can take several minutes (`sentence-transformers` is large). Watch the logs in **Manage app**.
+9. **Verify.** Open the app URL and ask an example question that uses all three sources (database, weather, SOP). Confirm answers return without tool errors.
+10. **Update later.** Every `git push` to the deployed branch redeploys automatically. Change secrets under **Manage app > Settings > Secrets**. Use **Reboot app** after secret changes.
+
+### Deployment notes
+
+- Free apps go to sleep after a period of inactivity. The first visit afterward shows a wake-up button and a short delay.
+- The audit log (`logs/agent_audit.jsonl`) and any local Chroma data are lost on restart. Rely on Qdrant for vectors.
+- Never put real keys in the repository or in this file. If a key was ever committed or shared, rotate it.
+- Common failures: `ModuleNotFoundError` means a package is missing from `requirements.txt`. A "missing GOOGLE_API_KEY" or database error means a secret is missing or misspelled. Qdrant errors usually mean the collection was never ingested.
+
 ## Related documents
 
+- `workflow.md`: flowcharts and sequence diagrams of the full product workflow.
 - `architecture-context.md`: structure, boundaries, invariants.
 - `ui-context.md`: Streamlit UI conventions.
 - `code-standards.md`: coding rules.

@@ -23,6 +23,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 - [x] Render deployment settings (`PORT`-based Streamlit command).
 - [x] Unit tests for security (`tests/test_security_unit.py`) and one integration test.
 - [x] Context documentation and `PROJECT_OVERVIEW.md`.
+- [x] Deployed to Streamlit Community Cloud (https://fdecoldchainai-qnmgdjmnsgln9wnxn78y5k.streamlit.app/); steps documented in `project-overview.md`.
 
 ## In progress / pending
 
