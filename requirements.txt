@@ -9,7 +9,7 @@ langchain-text-splitters
 pypdf
 langgraph
 langchain-core
-langchain-google-genai
+langchain-groq
 streamlit
 pytest
 qdrant-client

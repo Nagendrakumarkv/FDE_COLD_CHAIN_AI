@@ -23,7 +23,7 @@ The project is also a learning and portfolio build from a 24-lesson forward-depl
 | Feature | Where |
 |---------|-------|
 | Streamlit chat UI with session history, example questions, clear-conversation button | `app.py` |
-| LangGraph agent on Gemini with three tools and per-session memory | `agent/orchestrator.py` |
+| LangGraph agent on Groq with three tools and per-session memory | `agent/orchestrator.py` |
 | Read-only SQL tool (local PostgreSQL or Neon) | `tools/sql_tool.py` |
 | Weather tool (geocoding plus current conditions) | `tools/weather_tool.py` |
 | SOP search tool (ingest, chunk, embed, retrieve) | `rag/` |
@@ -58,7 +58,7 @@ Out of scope for now:
 
 ## Tech stack
 
-Python 3.12, Streamlit, LangGraph, LangChain, Google Gemini (`gemini-2.5-flash` by default), SQLAlchemy and psycopg2, PostgreSQL 17 / Neon, ChromaDB, Qdrant, sentence-transformers (`all-MiniLM-L6-v2`), pandas, pypdf, pytest, Docker.
+Python 3.12, Streamlit, LangGraph, LangChain, Groq (model set by `GROQ_MODEL`, via `langchain-groq`), SQLAlchemy and psycopg2, PostgreSQL 17 / Neon, ChromaDB, Qdrant, sentence-transformers (`all-MiniLM-L6-v2`), pandas, pypdf, pytest, Docker.
 
 ## Live deployment
 
@@ -73,10 +73,10 @@ It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER
 1. **Prepare the cloud services first.**
    - Neon: create a project and copy the connection string (`DATABASE_URL`). Load the data with `python scripts/ingest_data.py` while `DB_TARGET=neon` is set locally.
    - Qdrant Cloud: create a cluster, copy the cluster URL and API key. Load the SOP vectors with `python rag/ingest.py` (or `python rag/migrate_chroma_to_qdrant.py` to copy an existing Chroma store) while `VECTOR_DB_PROVIDER=qdrant` is set.
-   - Google AI Studio: create a Gemini API key.
+   - Groq: create an API key at https://console.groq.com/keys and pick a model enabled for your account (https://console.groq.com/docs/models).
 2. **Check the repository.**
    - `app.py` is at the repository root (it is the entry point).
-   - `requirements.txt` lists every dependency (it already includes `streamlit`, `qdrant-client`, `langchain-google-genai`).
+   - `requirements.txt` lists every dependency (it already includes `streamlit`, `qdrant-client`, `langchain-groq`).
    - `.env` is listed in `.gitignore`. Never commit it.
 3. **Push the code to GitHub.** Streamlit Cloud deploys from a GitHub repository (public, or private with access granted).
    ```powershell
@@ -93,8 +93,8 @@ It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER
 6. **Select the Python version.** Open **Advanced settings** and choose Python 3.12 (matches local development).
 7. **Add secrets.** In **Advanced settings > Secrets**, paste TOML with your real values:
    ```toml
-   GOOGLE_API_KEY = "your-gemini-key"
-   GEMINI_MODEL = "gemini-2.5-flash"
+   GROQ_API_KEY = "your-groq-key"
+   GROQ_MODEL = "your-enabled-groq-model-id"
    DB_TARGET = "neon"
    DATABASE_URL = "postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
    VECTOR_DB_PROVIDER = "qdrant"
@@ -112,7 +112,7 @@ It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER
 - Free apps go to sleep after a period of inactivity. The first visit afterward shows a wake-up button and a short delay.
 - The audit log (`logs/agent_audit.jsonl`) and any local Chroma data are lost on restart. Rely on Qdrant for vectors.
 - Never put real keys in the repository or in this file. If a key was ever committed or shared, rotate it.
-- Common failures: `ModuleNotFoundError` means a package is missing from `requirements.txt`. A "missing GOOGLE_API_KEY" or database error means a secret is missing or misspelled. Qdrant errors usually mean the collection was never ingested.
+- Common failures: `ModuleNotFoundError` means a package is missing from `requirements.txt`. A "missing GROQ_API_KEY" or "missing GROQ_MODEL" or database error means a secret is missing or misspelled. Qdrant errors usually mean the collection was never ingested.
 
 ## Related documents
 

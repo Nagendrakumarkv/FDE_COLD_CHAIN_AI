@@ -15,7 +15,7 @@ Stack: Python 3.12, Streamlit, LangGraph, SQLAlchemy, Chroma/Qdrant. This is not
 
 - Read configuration with `os.getenv` after `load_dotenv()`. Add every new variable to `.env` and document its name in `architecture-context.md`.
 - Never hard-code, print, log or return API keys, passwords or connection strings. Never read or echo `.env` values in answers.
-- Fail early with a clear `ValueError` or `RuntimeError` when required settings are missing, as `get_database_url()` and `create_model()` do.
+- Fail early with a clear `ValueError` or `RuntimeError` when required settings are missing, as `get_database_url()` and `get_groq_settings()` do. LLM settings are read through `agent/config.py` so Streamlit secrets work too.
 
 ## Security rules
 
@@ -49,7 +49,7 @@ Stack: Python 3.12, Streamlit, LangGraph, SQLAlchemy, Chroma/Qdrant. This is not
 ## Testing
 
 - Unit tests live in `tests/` and must not need network or API keys.
-- Tests that call Gemini, Neon, Qdrant or Open-Meteo must carry `@pytest.mark.integration`.
+- Tests that call Groq, Neon, Qdrant or Open-Meteo must carry `@pytest.mark.integration`.
 - Run unit tests with `pytest -m "not integration"`.
 - Root `test_*.py` files are manual scripts. Do not add new ones there. Put new tests in `tests/`.
 

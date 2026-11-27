@@ -47,6 +47,11 @@ def sanitize(value):
             r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+",
             r"\1[REDACTED]",
         ),
+        # Groq API keys start with gsk_.
+        (
+            r"gsk_[A-Za-z0-9]+",
+            "[REDACTED]",
+        ),
     ]
 
     for pattern, replacement in patterns:

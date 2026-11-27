@@ -19,7 +19,7 @@ st.set_page_config(
 # Response formatting
 # --------------------------------------------------
 def extract_response_text(response):
-    """Extract readable text from common LangChain/Gemini responses."""
+    """Extract readable text from common LangChain model responses."""
 
     if isinstance(response, str):
         return response.strip()
@@ -107,7 +107,7 @@ with st.sidebar:
         st.session_state.thread_id = uuid.uuid4().hex
         st.rerun()
 
-    st.caption("Powered by Gemini, LangGraph and Streamlit")
+    st.caption("Powered by Groq, LangGraph and Streamlit")
 
 
 # --------------------------------------------------

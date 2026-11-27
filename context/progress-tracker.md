@@ -13,7 +13,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 - [x] Weather tool using Open-Meteo geocoding and current conditions (`tools/weather_tool.py`).
 - [x] RAG pipeline: loader, chunker, ingestion, retriever (`rag/`).
 - [x] SOP documents ingested: `cold_chain_sop.txt`, `emergency_sop.md`.
-- [x] LangGraph agent on Gemini with memory, retries and fallback message (`agent/orchestrator.py`).
+- [x] LangGraph agent with memory, bounded retries and safe error messages (`agent/orchestrator.py`).
 - [x] Prompt-injection safeguards: untrusted-evidence wrapping, system prompt rules.
 - [x] Audit logging with redaction to `logs/agent_audit.jsonl`.
 - [x] Streamlit chat UI (`app.py`).
@@ -25,14 +25,20 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 - [x] Context documentation and `PROJECT_OVERVIEW.md`.
 - [x] Deployed to Streamlit Community Cloud (https://fdecoldchainai-qnmgdjmnsgln9wnxn78y5k.streamlit.app/); steps documented in `project-overview.md`.
 
+- [x] Feature 01, schema-aware SQL: live table schema plus column notes added to the agent prompt (`tools/schema_tool.py`). Spec: `feature-specs/01-schema-aware-sql/feature.md`. Not yet tested with live model questions.
+
+- [x] Feature 02, Groq migration: `ChatGroq` replaces Gemini, `agent/config.py` reads `GROQ_API_KEY`/`GROQ_MODEL` from env or Streamlit secrets, error classification with `Retry-After` handling, `.env.example` added, 34 unit tests pass (mocked provider). Spec: `feature-specs/02-groq-api-migration/feature.md`.
+
 ## In progress / pending
+
+- [ ] Feature 02 manual steps: add `GROQ_API_KEY` and `GROQ_MODEL` to local `.env`, run the local checks, add both to Streamlit secrets, push, verify the deployed app, then remove `GOOGLE_API_KEY` and `GEMINI_MODEL` from `.env` and Streamlit secrets and rotate the old Gemini key.
 
 - [ ] CI/CD: `.github/workflows/ci-cd.yml` is fully commented out. Re-enable the test job, then the Docker Hub push.
 - [ ] Course syllabus items in `future-reference.txt` that are not yet implemented (check the list there).
 
 ## Known issues (by priority)
 
-1. **Schema mismatch.** `db/init.sql` differs from the CSV-derived table, and the agent prompt gives no schema, so the model guesses column names. Fix: add the real schema to the prompt or a schema-lookup tool, and align or remove `init.sql`.
+1. **Schema mismatch (partly fixed by feature 01).** The agent prompt now includes the real schema. `db/init.sql` still differs from the CSV-derived table and nothing uses it. Align or remove it (needs approval).
 2. **No database-level read-only role.** Compose uses `admin` with a default password `admin123`. Create a read-only role for the agent.
 3. **Audit log tracked in git.** `logs/agent_audit.jsonl` holds question and answer text. Add it to `.gitignore` and untrack it (needs user approval).
 4. **Port mismatch in compose.** Container listens on `PORT` (default 10000), compose maps `8501:8501`. Set `PORT=8501` for the app service or change the mapping.
@@ -40,7 +46,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 6. **Qdrant overhead.** `get_qdrant_collection()` checks the collection and creates three payload indexes on every query, and `count()` is called twice per search.
 7. **Fragile Qdrant `$and` filter** (`convert_filter` uses only `.must[0]` of each condition).
 8. **Stale references.** `SYSTEM_PROMPT` says "ChromaDB RAG". `CHROMA_HOST` and `CHROMA_PORT` in `.env` are unused. `future-reference.txt` mentions a chroma compose service that does not exist.
-9. **Startup cost.** Embedding model loads at import time and is not cached in the image. Gemini model is rebuilt on every reasoning step.
+9. **Startup cost.** Embedding model loads at import time and is not cached in the image. The Groq model object is rebuilt on every reasoning step.
 10. **No auth or rate limiting.** `MemorySaver` is in-memory only. `recursion_limit=12` may cut long tool chains.
 11. **Unpinned dependencies** in `requirements.txt`.
 12. **Test coverage is thin.** One integration test (weather only). SQL and SOP integration cases are commented out. Root `test_*.py` files are manual scripts and `test_security.py` duplicates the unit tests.
@@ -48,7 +54,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 
 ## Next steps (suggested order)
 
-1. Put the real table schema in the agent prompt (or add a schema tool) and fix or remove `db/init.sql`.
+1. ~~Put the real table schema in the agent prompt~~ (done, feature 01). Fix or remove `db/init.sql`.
 2. Create a read-only database user and use it for the agent.
 3. Untrack the audit log and add it to `.gitignore`.
 4. Fix the compose port mapping.
@@ -70,3 +76,5 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 | Date | Change |
 |------|--------|
 | 2026-11-24 | Filled all context files from the current codebase. Added `PROJECT_OVERVIEW.md`. |
+| 2026-11-25 | Added Streamlit deployment steps and `workflow.md`. Implemented feature 01 (schema-aware SQL). |
+| 2026-11-25 | Implemented feature 02 (Groq migration). Live key checks and deployment pending. |

@@ -11,7 +11,7 @@ agent.orchestrator.ask_agent()
    v
 LangGraph StateGraph(MessagesState) + MemorySaver, recursion_limit=12
    START -> reasoner -> (tools_condition) -> tools -> reasoner ... -> END
-   reasoner = Gemini with bound tools and SYSTEM_PROMPT
+   reasoner = Groq (ChatGroq) with bound tools and SYSTEM_PROMPT
    tools    = query_logistics | check_weather | search_compliance_sop
                 |                   |                  |
            tools/sql_tool     tools/weather_tool   rag/retriever
@@ -42,6 +42,7 @@ Dependency direction: `app` -> `agent` -> `tools` and `rag`. Lower layers never 
 | PostgreSQL (local Docker) or Neon | `logistics` table, created from the CSV headers by `df.to_sql` | `DB_TARGET=local` uses `DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD`. `DB_TARGET=neon` uses `DATABASE_URL`. |
 | Chroma (default) | Collection `cold_chain_sop`, cosine space | `VECTOR_DB_PROVIDER=chroma`, `CHROMA_PATH` (default `vector_db`) |
 | Qdrant Cloud | Collection from `QDRANT_COLLECTION` (default `cold_chain_sop`), 384 dimensions, cosine | `VECTOR_DB_PROVIDER=qdrant`, `QDRANT_URL`, `QDRANT_API_KEY` |
+| LLM settings | `GROQ_API_KEY` and `GROQ_MODEL`, read by `agent/config.py` from the environment, then `st.secrets` | Required |
 | `logs/agent_audit.jsonl` | One JSON event per line | `AUDIT_LOG_PATH` |
 | `MemorySaver` | Conversation state per `thread_id` | In process only, lost on restart |
 
@@ -67,15 +68,4 @@ Vector record shape: Chroma stores document, embedding and metadata. The Qdrant 
 
 ## Error handling and retries
 
-`invoke_model_with_retry` retries up to 3 times with 2^n second backoff, only for errors that look transient (timeout, connection, 429, 502, 503). Quota, billing and auth errors fail at once. If the model call fails, `reason()` returns a fixed apology message. `app.py` catches any remaining exception and shows a generic error.
-
-## Deployment
-
-- **Docker image:** `python:3.12-slim`, runs `streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-10000}`.
-- **Compose:** `postgres` (postgres:17, db `cold_chain`, healthcheck, named volume) and `app` (mounts `./vector_db` and `./logs`). The compose file maps `8501:8501`, so `PORT=8501` must be set for the app service.
-- **Cloud:** Render for the app, Neon for PostgreSQL, Qdrant Cloud for vectors.
-- **CI/CD:** `.github/workflows/ci-cd.yml` is fully commented out. The planned flow is pytest, then Docker Hub build and push on pushes to main.
-
-## Known structural issues
-
-See `progress-tracker.md` for the live list. Main items: `db/init.sql` does not match the CSV schema, the two SQL validators are duplicated, there is no database-level read-only role, and Qdrant index creation runs on every query.
+`invoke_model_with_retry` retries up to 3 attempts, only for 429, 5xx, timeout and connection errors (`classify_model_error`). It sleeps for the `Retry-After` header when present, else 2^n seconds, and does not retry when the wait exceeds 20 seconds. 401, 403, 404 and other errors fail at once. `reason()` turns any failure into a safe, specific message (missing config, bad key, model not available, rate limit with wait time, timeout, server error). There is no fallback to another provider. `app.py` catches any remaining exception and shows a generic error.

@@ -50,7 +50,8 @@ Pending Lessons
 python -m pip install streamlit
 python -m rag.ingest
 rmdir /s /q vector_db
-python -m streamlit run app.py
+
+
 
 docker compose up -d
 docker compose up -d postgres chroma
@@ -72,6 +73,4 @@ Set up this app on Neon.
 
 ---------------------------------------------------
 
-Pending
-
-4. Configure ChromaDB cloud storage
+python -m streamlit run app.py

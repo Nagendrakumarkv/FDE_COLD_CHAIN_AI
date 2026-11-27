@@ -49,7 +49,7 @@ Never read out, print or commit secrets. Variable names are fine, values are not
 
 - Run `pytest -m "not integration"` after any change to `agent/`, `tools/` or `rag/`.
 - Run `python -m streamlit run app.py` and ask one question per tool to check the UI end to end. Tell the user to run it, since it is a long-running process.
-- Integration tests need `GOOGLE_API_KEY` and network access. Say clearly when they were not run.
+- Integration tests need `GROQ_API_KEY` and `GROQ_MODEL` and network access. Say clearly when they were not run.
 - Check the original request point by point before reporting completion. Say what was not verified.
 
 ## Delivery and reporting
