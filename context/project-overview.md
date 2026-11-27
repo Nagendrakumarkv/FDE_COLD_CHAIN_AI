@@ -120,6 +120,7 @@ It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER
 ## Related documents
 
 - `workflow.md`: flowcharts and sequence diagrams of the full product workflow.
+- `developer-workflow.md`: code walkthrough for new developers, with file, function and line for login and each kind of question.
 - `architecture-context.md`: structure, boundaries, invariants.
 - `ui-context.md`: Streamlit UI conventions.
 - `code-standards.md`: coding rules.
