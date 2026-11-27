@@ -167,3 +167,27 @@ Full deployment steps are in `project-overview.md` under "Live deployment".
 | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | `rag/vector_store.py` | Qdrant Cloud |
 | `CHROMA_PATH` | `rag/vector_store.py` | Local Chroma folder |
 | `AUDIT_LOG_PATH` | `agent/audit_logger.py` | Audit log file location |
+
+## 10. Login and conversation history
+
+```mermaid
+flowchart TD
+    A[Open app] --> B[init_database: create tables if missing]
+    B --> C{auth_user in session<br/>and under 8 hours old?}
+    C -->|no| D[Login form only]
+    D --> E[authenticate: lockout check,<br/>fetch admin, bcrypt verify]
+    E -->|fail| F[Generic invalid-credentials message]
+    E -->|locked| G[Try again in N seconds]
+    E -->|ok| H[Store auth_user in session, rerun]
+    C -->|yes| I[Chat UI + sidebar]
+    H --> I
+    I --> J[Sidebar: list conversations, newest activity first]
+    J -->|open| K[Load messages, owner-checked]
+    J -->|rename / delete dialog| L[Update or delete in Neon, owner-checked]
+    I --> M[New question]
+    M --> N[Create conversation if new, title from first message]
+    N --> O[Save user message]
+    O --> P[ask_agent with thread conv-ID,<br/>saved history seeds an empty thread]
+    P --> Q[Save assistant answer]
+    I --> R[Log out: clear session state]
+```

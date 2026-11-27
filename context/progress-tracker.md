@@ -1,6 +1,6 @@
 # Progress Tracker
 
-Last updated: 2026-11-24
+Last updated: 2026-11-27
 
 ## Current phase
 
@@ -29,6 +29,8 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 
 - [x] Feature 02, Groq migration: `ChatGroq` replaces Gemini, `agent/config.py` reads `GROQ_API_KEY`/`GROQ_MODEL` from env or Streamlit secrets, error classification with `Retry-After` handling, `.env.example` added, 34 unit tests pass (mocked provider). Spec: `feature-specs/02-groq-api-migration/feature.md`.
 
+- [x] Feature 03, admin login and chat history: bcrypt login against `admin_users` (Neon), logout, 5-strike lockout, 8-hour session; conversations and messages saved to Neon; sidebar history with open, rename and delete (with confirmation); agent SQL blocked from the new tables; saved history restored to the agent after a restart. 57 unit tests pass. Spec: `feature-specs/03-admin-chat-history/feature.md`, notes in `implementation.md`. Not yet tried in the browser with a real login.
+
 ## In progress / pending
 
 - [ ] Feature 02 manual steps: add `GROQ_API_KEY` and `GROQ_MODEL` to local `.env`, run the local checks, add both to Streamlit secrets, push, verify the deployed app, then remove `GOOGLE_API_KEY` and `GEMINI_MODEL` from `.env` and Streamlit secrets and rotate the old Gemini key.
@@ -47,7 +49,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 7. **Fragile Qdrant `$and` filter** (`convert_filter` uses only `.must[0]` of each condition).
 8. **Stale references.** `SYSTEM_PROMPT` says "ChromaDB RAG". `CHROMA_HOST` and `CHROMA_PORT` in `.env` are unused. `future-reference.txt` mentions a chroma compose service that does not exist.
 9. **Startup cost.** Embedding model loads at import time and is not cached in the image. The Groq model object is rebuilt on every reasoning step.
-10. **No auth or rate limiting.** `MemorySaver` is in-memory only. `recursion_limit=12` may cut long tool chains.
+10. **Login throttling is per process.** The lockout counter is in memory, so it resets on restart and is not shared between instances. No per-user rate limit on questions. `MemorySaver` is in-memory only. `recursion_limit=12` may cut long tool chains.
 11. **Unpinned dependencies** in `requirements.txt`.
 12. **Test coverage is thin.** One integration test (weather only). SQL and SOP integration cases are commented out. Root `test_*.py` files are manual scripts and `test_security.py` duplicates the unit tests.
 13. **Empty `ui/` folder** and `context/feature-specs`, `context/screenshots` folders.
@@ -68,7 +70,7 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 
 - Which database target is the default for deployment (Neon or Docker PostgreSQL)?
 - Which vector store is used in production (Qdrant Cloud or local Chroma)?
-- Is authentication needed before sharing the Render deployment?
+- Should the agent use a read-only database role now that credentials and chat history share its database? (Issue 2.)
 - Should the agent have a retention policy for audit logs?
 
 ## Change log
@@ -78,3 +80,4 @@ Working prototype with deployment support. The agent, three tools, RAG, security
 | 2026-11-24 | Filled all context files from the current codebase. Added `PROJECT_OVERVIEW.md`. |
 | 2026-11-25 | Added Streamlit deployment steps and `workflow.md`. Implemented feature 01 (schema-aware SQL). |
 | 2026-11-25 | Implemented feature 02 (Groq migration). Live key checks and deployment pending. |
+| 2026-11-27 | Implemented feature 03 (admin login, conversation history). Browser and deployment checks pending. |

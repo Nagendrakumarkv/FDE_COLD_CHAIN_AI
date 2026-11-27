@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 MODEL_TIMEOUT_SECONDS = 30
 # Longest Retry-After we are willing to sleep through inside one request.
 MAX_RETRY_WAIT_SECONDS = 20
+# Saved messages fed back to the model when reopening a conversation.
+MAX_HISTORY_MESSAGES = 20
 
 SYSTEM_PROMPT = """
 You are a Cold Chain Logistics AI Assistant.
@@ -385,8 +387,32 @@ def build_graph():
 graph = build_graph()
 
 
-def ask_agent(question: str, thread_id: str = "default"):
-    """Validate and process a user question within its session."""
+def restore_history(config, history):
+    """Return saved messages to seed an empty thread, else an empty list.
+
+    The in-memory checkpointer is lost on restart, so a reopened saved
+    conversation would otherwise reach the model with no context.
+    """
+    if not history:
+        return []
+
+    if graph.get_state(config).values.get("messages"):
+        return []
+
+    return [
+        {"role": item["role"], "content": str(item["content"])}
+        for item in history[-MAX_HISTORY_MESSAGES:]
+        if item.get("role") in ("user", "assistant")
+        and str(item.get("content", "")).strip()
+    ]
+
+
+def ask_agent(question: str, thread_id: str = "default", history=None):
+    """Validate and process a user question within its session.
+
+    history: optional earlier messages ({"role", "content"}) used only
+    when the thread has no in-memory state yet.
+    """
 
     question = validate_question(question)
 
@@ -402,12 +428,17 @@ def ask_agent(question: str, thread_id: str = "default"):
             question=sanitize(question),
         )
 
+        config = {
+            "configurable": {"thread_id": thread_id.strip()},
+            "recursion_limit": 12,
+        }
+
         result = graph.invoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={
-                "configurable": {"thread_id": thread_id.strip()},
-                "recursion_limit": 12,
+            {
+                "messages": restore_history(config, history)
+                + [{"role": "user", "content": question}]
             },
+            config=config,
         )
 
         messages = result.get("messages", [])

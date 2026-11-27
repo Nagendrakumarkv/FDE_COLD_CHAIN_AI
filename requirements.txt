@@ -13,3 +13,4 @@ langchain-groq
 streamlit
 pytest
 qdrant-client
+bcrypt>=4.0,<6

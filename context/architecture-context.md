@@ -43,6 +43,7 @@ Dependency direction: `app` -> `agent` -> `tools` and `rag`. Lower layers never 
 | Chroma (default) | Collection `cold_chain_sop`, cosine space | `VECTOR_DB_PROVIDER=chroma`, `CHROMA_PATH` (default `vector_db`) |
 | Qdrant Cloud | Collection from `QDRANT_COLLECTION` (default `cold_chain_sop`), 384 dimensions, cosine | `VECTOR_DB_PROVIDER=qdrant`, `QDRANT_URL`, `QDRANT_API_KEY` |
 | LLM settings | `GROQ_API_KEY` and `GROQ_MODEL`, read by `agent/config.py` from the environment, then `st.secrets` | Required |
+| Admin and chat tables (same database) | `admin_users` (bcrypt hashes), `conversations`, `conversation_messages` with ON DELETE CASCADE, created by `chat_store.ensure_schema()` at app start | Managed only by `tools/chat_store.py`. Admins are created with `python -m scripts.create_admin`. |
 | `logs/agent_audit.jsonl` | One JSON event per line | `AUDIT_LOG_PATH` |
 | `MemorySaver` | Conversation state per `thread_id` | In process only, lost on restart |
 
@@ -65,6 +66,8 @@ Vector record shape: Chroma stores document, embedding and metadata. The Qdrant 
 7. **Embedding dimension is 384.** Changing the embedding model requires a new Qdrant collection and re-ingestion.
 8. **One vector provider at a time**, selected by `VECTOR_DB_PROVIDER`. The migration script requires `qdrant`.
 9. **Honest answers.** The system prompt requires disclosing missing evidence, citing SOP filenames and never declaring cargo safe on incomplete data.
+10. **Login required.** `app.py` shows only the login form until `agent.auth.authenticate` succeeds (bcrypt, 5 failures lock a username for 5 minutes, session expires after 8 hours). No code path reaches `ask_agent` without a session user.
+11. **Chat data is owner-scoped and hidden from the agent.** Every `chat_store` function filters by the admin ID. The agent SQL validators reject any query that names `admin_users`, `conversations` or `conversation_messages` (or uses `query_to_xml` style functions). A read-only database role is still the stronger fix.
 
 ## Error handling and retries
 

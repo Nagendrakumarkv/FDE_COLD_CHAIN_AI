@@ -22,7 +22,9 @@ The project is also a learning and portfolio build from a 24-lesson forward-depl
 
 | Feature | Where |
 |---------|-------|
-| Streamlit chat UI with session history, example questions, clear-conversation button | `app.py` |
+| Streamlit chat UI with example questions | `app.py` |
+| Admin login (bcrypt, Neon), logout, login throttling | `agent/auth.py`, `app.py` |
+| Saved conversations: sidebar history, reopen, rename, delete with confirmation | `tools/chat_store.py`, `app.py` |
 | LangGraph agent on Groq with three tools and per-session memory | `agent/orchestrator.py` |
 | Read-only SQL tool (local PostgreSQL or Neon) | `tools/sql_tool.py` |
 | Weather tool (geocoding plus current conditions) | `tools/weather_tool.py` |
@@ -46,7 +48,7 @@ In scope:
 
 Out of scope for now:
 - Writing to the database or any external system.
-- User accounts, authentication and rate limiting.
+- Public sign-up, roles and rate limiting beyond the login lockout. Admin accounts are created only with the script.
 - Persistent conversation memory across restarts.
 - Real-time IoT streaming or alerting.
 - A custom front end beyond Streamlit (`ui/` is empty).
@@ -78,7 +80,8 @@ It uses Neon PostgreSQL (`DB_TARGET=neon`) and Qdrant Cloud (`VECTOR_DB_PROVIDER
    - `app.py` is at the repository root (it is the entry point).
    - `requirements.txt` lists every dependency (it already includes `streamlit`, `qdrant-client`, `langchain-groq`).
    - `.env` is listed in `.gitignore`. Never commit it.
-3. **Push the code to GitHub.** Streamlit Cloud deploys from a GitHub repository (public, or private with access granted).
+3. **Create the first admin once** (after the app has started once, or directly): `python -m scripts.create_admin` with `DB_TARGET=neon`. It prompts for username and password and stores a bcrypt hash. The app creates the three chat tables itself on startup.
+3b. **Push the code to GitHub.** Streamlit Cloud deploys from a GitHub repository (public, or private with access granted).
    ```powershell
    git add .
    git commit -m "Prepare Streamlit deployment"

@@ -37,7 +37,8 @@ Stack: Python 3.12, Streamlit, LangGraph, SQLAlchemy, Chroma/Qdrant. This is not
 ## Database
 
 - Use SQLAlchemy `text()` and `engine.connect()`. Queries run in a read-only transaction.
-- `scripts/ingest_data.py` is the only place that writes to the database.
+- `scripts/ingest_data.py` is the only place that writes logistics data. The only other writers are `tools/chat_store.py` (admin, conversation and message tables) and `scripts/create_admin.py`. The agent SQL tool stays read-only.
+- Passwords are only handled through `agent/auth.py` (bcrypt). Never log or display a password or hash.
 - Column names come from `data/logistics.csv`. Check the real table before writing example queries. `db/init.sql` currently does not match it.
 
 ## RAG

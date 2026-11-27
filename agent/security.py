@@ -14,6 +14,21 @@ FORBIDDEN_SQL = re.compile(
 )
 
 
+# The agent may only read logistics data. Admin credentials and chat
+# history live in the same database and must stay out of its reach.
+PROTECTED_TABLES = re.compile(
+    r"\b(admin_users|conversations|conversation_messages)\b",
+    re.IGNORECASE,
+)
+
+# These run a query given as text, which could hide a protected table name.
+DYNAMIC_QUERY_FUNCTIONS = re.compile(
+    r"\b(query_to_xml|query_to_xml_and_xmlschema|table_to_xml|"
+    r"cursor_to_xml|database_to_xml|schema_to_xml)\s*\(",
+    re.IGNORECASE,
+)
+
+
 def validate_text(value: str, field_name: str) -> str:
     """Validate a text input before processing."""
 
@@ -72,6 +87,11 @@ def validate_sql_readonly(query: str) -> str:
         re.IGNORECASE,
     ):
         raise ValueError("Restricted PostgreSQL functions are not allowed.")
+
+    if PROTECTED_TABLES.search(normalized) or DYNAMIC_QUERY_FUNCTIONS.search(
+        normalized
+    ):
+        raise ValueError("Access to this table is not allowed.")
 
     if re.search(
         r"\bINTO\b|\bFOR\s+(UPDATE|SHARE)\b",

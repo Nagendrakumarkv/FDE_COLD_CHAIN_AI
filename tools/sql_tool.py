@@ -82,6 +82,19 @@ FORBIDDEN_KEYWORDS = {
 }
 
 
+# Same rules as agent/security.py (tools must not import from agent/).
+PROTECTED_TABLES = re.compile(
+    r"\b(admin_users|conversations|conversation_messages)\b",
+    re.IGNORECASE,
+)
+
+DYNAMIC_QUERY_FUNCTIONS = re.compile(
+    r"\b(query_to_xml|query_to_xml_and_xmlschema|table_to_xml|"
+    r"cursor_to_xml|database_to_xml|schema_to_xml)\s*\(",
+    re.IGNORECASE,
+)
+
+
 def validate_sql(query: str) -> None:
     """Validate SQL before sending it to PostgreSQL."""
 
@@ -111,6 +124,13 @@ def validate_sql(query: str) -> None:
         raise ValueError(
             f"Forbidden SQL operation detected: {', '.join(sorted(dangerous))}"
         )
+
+    # Admin credentials and chat history share this database but must
+    # never be readable through the agent's SQL tool.
+    if PROTECTED_TABLES.search(query_without_comments) or (
+        DYNAMIC_QUERY_FUNCTIONS.search(query_without_comments)
+    ):
+        raise ValueError("Access to this table is not allowed.")
 
     statements = [
         statement.strip()
