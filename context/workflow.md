@@ -8,13 +8,17 @@ Source files named in each diagram are the ground truth. If code changes, update
 
 ```mermaid
 flowchart LR
-    U[User in browser] --> UI[Streamlit UI<br/>app.py]
+    U[Admin in browser] --> UI[Streamlit UI<br/>app.py]
+    UI --> AU[Login gate<br/>agent/auth.py]
+    AU --> CS[Chat store<br/>tools/chat_store.py]
+    CS --> AD[(Neon: admin_users,<br/>conversations,<br/>conversation_messages)]
     UI --> AG[LangGraph agent<br/>agent/orchestrator.py]
     AG <--> LLM[Groq]
+    AG --> SC[Schema text<br/>tools/schema_tool.py]
     AG --> T1[query_logistics<br/>tools/sql_tool.py]
     AG --> T2[check_weather<br/>tools/weather_tool.py]
     AG --> T3[search_compliance_sop<br/>rag/retriever.py]
-    T1 --> DB[(PostgreSQL<br/>local or Neon)]
+    T1 --> DB[(PostgreSQL logistics table<br/>local or Neon)]
     T2 --> WX[Open-Meteo API]
     T3 --> VS[(Vector store<br/>Chroma or Qdrant)]
     AG --> AL[Audit log<br/>logs/agent_audit.jsonl]
@@ -26,6 +30,7 @@ flowchart LR
 sequenceDiagram
     actor User
     participant UI as Streamlit app.py
+    participant Store as chat_store (Neon)
     participant Agent as ask_agent()
     participant Sec as security.py
     participant G as LangGraph
@@ -33,14 +38,16 @@ sequenceDiagram
     participant Tool as Tool (SQL / Weather / SOP)
     participant Log as Audit log
 
+    Note over User,UI: Already signed in (see section 10)
     User->>UI: Types question in chat box
-    UI->>Agent: ask_agent(question, thread_id)
+    UI->>Store: Create conversation if new, save user message
+    UI->>Agent: ask_agent(question, thread conv-ID, history)
     Agent->>Sec: validate_question()
     Sec-->>Agent: clean question (or error)
     Agent->>Log: user_question
     Agent->>G: invoke (recursion_limit 12)
     loop Until Groq answers without a tool call
-        G->>LLM: system prompt + conversation
+        G->>LLM: system prompt + table schema + conversation
         LLM-->>G: tool call or final answer
         opt Tool call requested
             G->>Tool: run_tool(...)
@@ -51,7 +58,8 @@ sequenceDiagram
     G-->>Agent: last message
     Agent->>Log: agent_response
     Agent-->>UI: answer text
-    UI-->>User: Shows answer, saves to session history
+    UI->>Store: Save assistant answer
+    UI-->>User: Shows answer, sidebar list refreshes
 ```
 
 ## 3. Agent graph (LangGraph)
@@ -62,11 +70,11 @@ flowchart TD
     R -->|tools_condition: tool call| TN[tools<br/>ToolNode]
     TN --> R
     R -->|no tool call| E([END: final answer])
-    R -.->|Groq fails| F[Fallback message:<br/>no unverified result available]
+    R -.->|Groq fails| F[Specific safe message<br/>for the error kind,<br/>no unverified result]
     F --> E
 ```
 
-Conversation memory is kept per `thread_id` in `MemorySaver` (in process memory, lost on restart).
+Conversation memory is kept per `thread_id` (`conv-<conversation id>`) in `MemorySaver`, in process memory. After a restart, `restore_history()` seeds an empty thread with the last 20 saved messages from Neon, so reopened conversations keep their context. Each reasoning step also appends the live `logistics` column list and notes (`tools/schema_tool.py`) to the system prompt.
 
 ## 4. Tool execution and safety checks
 
@@ -76,7 +84,7 @@ flowchart TD
     B -->|query_logistics| C[validate_sql_readonly]
     B -->|check_weather| D[validate_text + length 120]
     B -->|search_compliance_sop| E[validate_text]
-    C -->|rejected| X[Return error dict<br/>tool failed]
+    C -->|rejected: not SELECT, forbidden keyword,<br/>or names admin_users / conversations /<br/>conversation_messages| X[Return error dict<br/>tool failed]
     C -->|ok| C2[execute_sql on PostgreSQL]
     D -->|ok| D2[get_weather: geocode, then current conditions]
     E -->|ok| E2[search_sop top_k=3]
@@ -88,7 +96,7 @@ flowchart TD
     R --> L[Audit: tool_completed<br/>success or error, duration]
 ```
 
-Rules enforced: read-only SQL, secrets redacted in logs, retrieved SOP text treated as untrusted data, raw exception details not shown to the model.
+Rules enforced: read-only SQL, admin and chat tables unreadable by the agent, secrets redacted in logs, retrieved SOP text treated as untrusted data, raw exception details not shown to the model.
 
 ## 5. Model retry
 
@@ -135,7 +143,11 @@ flowchart LR
     SEL -->|local| PG[(Local / Docker PostgreSQL)]
     SEL -->|neon| NE[(Neon PostgreSQL)]
     DOCS[documents/] --> RI[rag/ingest.py] --> VSTORE[(Chroma or Qdrant)]
+    CA[python -m scripts.create_admin<br/>hidden password prompt] --> HASH[bcrypt hash] --> AUS[(admin_users)]
+    START[App start] --> ES[chat_store.ensure_schema<br/>creates the 3 chat tables if missing] --> AUS
 ```
+
+Both the app and the script write to the same database chosen by `DB_TARGET`.
 
 ## 8. Environments and deployment
 
@@ -143,6 +155,7 @@ flowchart LR
 flowchart TD
     DEV[Local dev<br/>streamlit run app.py<br/>.env file] --> GIT[git push to GitHub]
     GIT --> CI[GitHub Actions<br/>ci-cd.yml, currently commented out]
+    DEV -.->|once per database| CA2[python -m scripts.create_admin]
     GIT --> SC[Streamlit Community Cloud<br/>auto redeploy on push]
     SC --> APP[Live app<br/>fdecoldchainai-qnmgdjmnsgln9wnxn78y5k.streamlit.app]
     SEC[Streamlit Secrets<br/>GROQ_API_KEY, GROQ_MODEL, DATABASE_URL,<br/>QDRANT_URL, QDRANT_API_KEY ...] --> APP
@@ -153,7 +166,7 @@ flowchart TD
     DEV -.-> DK[Docker Compose<br/>app + PostgreSQL]
 ```
 
-Full deployment steps are in `project-overview.md` under "Live deployment".
+Full deployment steps are in `project-overview.md` under "Live deployment". Nobody can sign in until an admin exists in the target database.
 
 ## 9. Configuration map
 
@@ -167,6 +180,8 @@ Full deployment steps are in `project-overview.md` under "Live deployment".
 | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | `rag/vector_store.py` | Qdrant Cloud |
 | `CHROMA_PATH` | `rag/vector_store.py` | Local Chroma folder |
 | `AUDIT_LOG_PATH` | `agent/audit_logger.py` | Audit log file location |
+
+Login settings are constants in `agent/auth.py` (5 failures, 5-minute lockout, 8-hour session), not environment variables.
 
 ## 10. Login and conversation history
 
@@ -188,6 +203,19 @@ flowchart TD
     M --> N[Create conversation if new, title from first message]
     N --> O[Save user message]
     O --> P[ask_agent with thread conv-ID,<br/>saved history seeds an empty thread]
-    P --> Q[Save assistant answer]
+    P --> Q[Save assistant answer, rerun to refresh sidebar]
     I --> R[Log out: clear session state]
+```
+
+The login gate sits in front of everything: until `auth_user` is set, `app.py` calls `st.stop()` before any agent, conversation or sidebar code runs. Every `chat_store` call filters by the signed-in admin's ID.
+
+## 11. Test and verification flow
+
+```mermaid
+flowchart LR
+    A[Change code] --> B[pytest -m 'not integration'<br/>unit tests, provider and DB mocked]
+    B --> C[Optional: integration tests<br/>need GROQ keys and network]
+    B --> D[streamlit run app.py<br/>sign in, one question per tool]
+    D --> E[git push]
+    E --> F[Streamlit Cloud rebuild, repeat checks]
 ```
